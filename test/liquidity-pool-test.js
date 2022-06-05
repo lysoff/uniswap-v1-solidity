@@ -14,7 +14,7 @@ const ONE_ETHER = eth("1");
 const TWO_ETHER = eth("2");
 
 describe("UniswapExchangeV1: Liquidity pool", function () {
-  it.only("adds and removes liquidity", async function () {
+  it("adds and removes liquidity", async function () {
     const [signer0, signer1, signer2] = await ethers.getSigners();
 
     const tokenFactory = await ethers.getContractFactory("ERC20Test");
