@@ -33,14 +33,15 @@ describe("UniswapExchangeV1: Liquidity pool", function () {
     const [, DEN_exchangeAddr] = receipt.events.find((e) => e.event === "NewExchange")?.args;
 
     this.DEN_exchange = await uniswapExchangeFactory.attach(DEN_exchangeAddr);
+
+    // First liquidity provider (signer0) adds liquidity
+    await this.HAY_token.approve(this.HAY_exchange.address, HAY_RESERVE);
+    await this.HAY_exchange.addLiquidity(0, HAY_RESERVE, DEADLINE, { value: ETH_RESERVE });
   });
 
   it("adds and removes liquidity", async function () {
     const [signer0, signer1, signer2] = await ethers.getSigners();
 
-    // First liquidity provider (signer0) adds liquidity
-    await this.HAY_token.approve(this.HAY_exchange.address, HAY_RESERVE);
-    await this.HAY_exchange.addLiquidity(0, HAY_RESERVE, DEADLINE, { value: ETH_RESERVE });
     await this.HAY_token.transfer(signer1.address, eth("15"));
     await this.HAY_token.connect(signer1).approve(this.HAY_exchange.address, eth("15"));
 
@@ -62,15 +63,15 @@ describe("UniswapExchangeV1: Liquidity pool", function () {
     const HAY_ADDED = eth("5"); // 5 * 10 ** 18;
 
     // minLiquidity == 0 (while totalSupply > 0)
-    expect(this.HAY_exchange.connect(signer1).addLiquidity(0, eth("15"), DEADLINE, { value: ETH_ADDED })).to.be
+    await expect(this.HAY_exchange.connect(signer1).addLiquidity(0, eth("15"), DEADLINE, { value: ETH_ADDED })).to.be
       .reverted;
 
     // maxTokens < tokens needed
-    expect(this.HAY_exchange.connect(signer1).addLiquidity(1, HAY_ADDED - 1, DEADLINE, { value: ETH_ADDED })).to.be
-      .reverted;
+    await expect(this.HAY_exchange.connect(signer1).addLiquidity(1, HAY_ADDED - 1, DEADLINE, { value: ETH_ADDED })).to
+      .be.reverted;
 
     // _deadline < block.timestamp
-    expect(this.HAY_exchange.connect(signer1).addLiquidity(1, eth("15"), 1, { value: ETH_ADDED })).to.be.reverted;
+    await expect(this.HAY_exchange.connect(signer1).addLiquidity(1, eth("15"), 1, { value: ETH_ADDED })).to.be.reverted;
 
     // Second liquidity provider (a1) adds liquidity
     await this.HAY_exchange.connect(signer1).addLiquidity(1, eth("15"), DEADLINE, { value: ETH_ADDED });
@@ -96,22 +97,24 @@ describe("UniswapExchangeV1: Liquidity pool", function () {
     );
 
     // amount == 0
-    expect(this.HAY_exchange.connect(signer2).removeLiquidity(0, 1, 1, DEADLINE)).to.be.reverted;
+    await expect(this.HAY_exchange.connect(signer2).removeLiquidity(0, 1, 1, DEADLINE)).to.be.reverted;
 
     // amount > owned (liquidity)
-    expect(this.HAY_exchange.connect(signer2).removeLiquidity(ONE_ETHER.add(BigNumber.from(1)), 1, 1, DEADLINE)).to.be
-      .reverted;
+    await expect(this.HAY_exchange.connect(signer2).removeLiquidity(ONE_ETHER.add(BigNumber.from(1)), 1, 1, DEADLINE))
+      .to.be.reverted;
 
     // min eth > eth divested
-    expect(this.HAY_exchange.connect(signer2).removeLiquidity(ONE_ETHER, ONE_ETHER.add(BigNumber.from(1)), 1, DEADLINE))
-      .to.be.reverted;
+    await expect(
+      this.HAY_exchange.connect(signer2).removeLiquidity(ONE_ETHER, ONE_ETHER.add(BigNumber.from(1)), 1, DEADLINE)
+    ).to.be.reverted;
 
     // min tokens > tokens divested
-    expect(this.HAY_exchange.connect(signer2).removeLiquidity(ONE_ETHER, 1, TWO_ETHER.add(BigNumber.from(1)), DEADLINE))
-      .to.be.reverted;
+    await expect(
+      this.HAY_exchange.connect(signer2).removeLiquidity(ONE_ETHER, 1, TWO_ETHER.add(BigNumber.from(1)), DEADLINE)
+    ).to.be.reverted;
 
     // deadline < block.timestamp
-    expect(this.HAY_exchange.removeLiquidity(ONE_ETHER, 1, 1, 1)).to.be.reverted;
+    await expect(this.HAY_exchange.removeLiquidity(ONE_ETHER, 1, 1, 1)).to.be.reverted;
 
     // First, second and third liquidity providers remove their remaining liquidity
     await this.HAY_exchange.removeLiquidity(ETH_RESERVE, 1, 1, DEADLINE);

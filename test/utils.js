@@ -25,5 +25,5 @@ module.exports.swapOutput = function (outputAmount, inputReserve, outputReserve)
 
   const numerator = inputReserve.mul(outputAmount).mul(1000);
   const denominator = outputReserve.sub(outputAmount).mul(997);
-  return numerator.div(denominator);
+  return numerator.div(denominator).add(1);
 };
