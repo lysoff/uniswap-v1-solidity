@@ -1,5 +1,7 @@
-# Uniswap-v1-solidity [WIP]
+# Uniswap-v1-solidity
 
-This project is built for educational purposes only and clones the logic of https://github.com/Uniswap/v1-contracts
+This project is built for educational purposes only.
 
-[WORK IN PROGRESS]
+UniswapV1 but written in Solidity
+
+Check https://github.com/Uniswap/v1-contracts for the original code
