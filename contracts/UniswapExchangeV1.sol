@@ -68,8 +68,8 @@ contract UniswapExchangeV1 is ERC20("Uniswap V1", "UNI-V1") {
       require(address(factory) != address(0) && address(token) != address(0) && msg.value >= 1000000000);
       require(factory.getExchange(address(token)) == address(this));
 
-      uint tokenAmount = _maxTokens; // tokenAmount = 10 DVT
-      uint initialLiquidity = address(this).balance; // initialLiquidity = 10 ETH
+      uint tokenAmount = _maxTokens;
+      uint initialLiquidity = address(this).balance;
       // minting liquidity tokens equal to paid ETH
       _mint(msg.sender, initialLiquidity); 
 
