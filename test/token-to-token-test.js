@@ -51,7 +51,7 @@ describe("UniswapExchangeV1: Token to Token trades", function () {
     await this.DEN_exchange.addLiquidity(0, DEN_RESERVE, DEADLINE, { value: ETH_RESERVE });
   });
 
-  it("process token to token swap input", async function () {
+  it("processes token to token swap input", async function () {
     const [a0, a1, a2] = await ethers.getSigners();
 
     const { HAY_token, HAY_exchange, DEN_token, DEN_exchange } = this;
@@ -235,7 +235,7 @@ describe("UniswapExchangeV1: Token to Token trades", function () {
     expect(await ethers.provider.getBalance(a2.address)).to.be.eq(INITIAL_ETH_2);
   });
 
-  it("process token to token swap output", async function () {
+  it("processes token to token swap output", async function () {
     const [a0, a1, a2] = await ethers.getSigners();
 
     const { HAY_token, HAY_exchange, DEN_token, DEN_exchange } = this;
@@ -339,7 +339,7 @@ describe("UniswapExchangeV1: Token to Token trades", function () {
     );
   });
 
-  it("process token to token transfer output", async function () {
+  it("processes token to token transfer output", async function () {
     const [a0, a1, a2] = await ethers.getSigners();
 
     const { HAY_token, HAY_exchange, DEN_token, DEN_exchange } = this;

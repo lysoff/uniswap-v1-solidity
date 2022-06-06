@@ -3,18 +3,21 @@ const { expect } = require("chai");
 const { BigNumber } = require("ethers");
 
 const { swapInput, swapOutput } = require("./utils");
+
 const {
   ETH_RESERVE,
   HAY_RESERVE,
+  DEN_RESERVE,
   HAY_SOLD,
   MIN_ETH_BOUGHT,
-  ETH_BOUGHT,
+  MIN_DEN_BOUGHT,
+  DEN_BOUGHT,
   MAX_HAY_SOLD,
+  MAX_ETH_SOLD,
   DEADLINE,
-  ZERO_ADDR,
 } = require("./constants");
 
-describe("UniswapExchangeV1: Token to ETH trades", function () {
+describe("UniswapExchangeV1: Token to Exchange trades", function () {
   beforeEach(async function () {
     const tokenFactory = await ethers.getContractFactory("ERC20Test");
 
@@ -42,31 +45,35 @@ describe("UniswapExchangeV1: Token to ETH trades", function () {
     // First liquidity provider (signer0) adds liquidity
     await this.HAY_token.approve(this.HAY_exchange.address, HAY_RESERVE);
     await this.HAY_exchange.addLiquidity(0, HAY_RESERVE, DEADLINE, { value: ETH_RESERVE });
+    // First liquidity provider (signer0) adds liquidity
+    await this.DEN_token.approve(this.DEN_exchange.address, DEN_RESERVE);
+    await this.DEN_exchange.addLiquidity(0, DEN_RESERVE, DEADLINE, { value: ETH_RESERVE });
   });
 
-  it("processes token to ETH swap input", async function () {
+  it("processes token to exchange swap input", async function () {
     const [a0, a1, a2] = await ethers.getSigners();
 
-    const { HAY_token, HAY_exchange } = this;
+    const { HAY_token, HAY_exchange, DEN_token, DEN_exchange } = this;
 
     const ETH_PURCHASED = swapInput(HAY_SOLD, HAY_RESERVE, ETH_RESERVE);
+    const DEN_PURCHASED = swapInput(ETH_PURCHASED, ETH_RESERVE, DEN_RESERVE);
+
     // Transfer HAY to BUYER
     await HAY_token.transfer(a1.address, HAY_SOLD);
     await HAY_token.connect(a1).approve(HAY_exchange.address, HAY_SOLD);
     expect(await HAY_token.balanceOf(a1.address)).to.be.eq(HAY_SOLD);
-    // tokens sold == 0
-    await expect(HAY_exchange.connect(a1).tokenToEthSwapInput(0, MIN_ETH_BOUGHT, DEADLINE)).to.be.reverted;
-    // min eth == 0
-    await expect(HAY_exchange.connect(a1).tokenToEthSwapInput(HAY_SOLD, 0, DEADLINE)).to.be.reverted;
-    // min eth > eth purchased
-    await expect(HAY_exchange.connect(a1).tokenToEthSwapInput(HAY_SOLD, ETH_PURCHASED.add(1), DEADLINE)).to.be.reverted;
-    // deadline < block.timestamp
-    await expect(HAY_exchange.connect(a1).tokenToEthSwapInput(HAY_SOLD, MIN_ETH_BOUGHT, 1)).to.be.reverted;
 
     const INITIAL_ETH = await ethers.provider.getBalance(a1.address);
 
     // BUYER converts ETH to UNI
-    const tx = await HAY_exchange.connect(a1).tokenToEthSwapInput(HAY_SOLD, MIN_ETH_BOUGHT, DEADLINE);
+    const tx = await HAY_exchange.connect(a1).tokenToExchangeSwapInput(
+      HAY_SOLD,
+      MIN_DEN_BOUGHT,
+      MIN_ETH_BOUGHT,
+      DEADLINE,
+      DEN_exchange.address
+    );
+
     // gas used
     const { cumulativeGasUsed, effectiveGasPrice } = await tx.wait();
 
@@ -74,117 +81,161 @@ describe("UniswapExchangeV1: Token to ETH trades", function () {
     expect(await ethers.provider.getBalance(HAY_exchange.address)).to.be.eq(ETH_RESERVE.sub(ETH_PURCHASED));
     expect(await HAY_token.balanceOf(HAY_exchange.address)).to.be.eq(HAY_RESERVE.add(HAY_SOLD));
 
+    // Updated balances of SWAP exchange
+    expect(await ethers.provider.getBalance(DEN_exchange.address)).to.be.eq(ETH_RESERVE.add(ETH_PURCHASED));
+    expect(await DEN_token.balanceOf(DEN_exchange.address)).to.be.eq(DEN_RESERVE.sub(DEN_PURCHASED));
+
     // Updated balances of BUYER
     expect(await HAY_token.balanceOf(a1.address)).to.be.eq(0);
+    expect(await DEN_token.balanceOf(a1.address)).to.be.eq(DEN_PURCHASED);
     expect(await ethers.provider.getBalance(a1.address)).to.be.eq(
-      INITIAL_ETH.add(ETH_PURCHASED).sub(cumulativeGasUsed.mul(effectiveGasPrice))
+      INITIAL_ETH.sub(cumulativeGasUsed.mul(effectiveGasPrice))
     );
   });
 
-  it("processes Token to ETH transfer input", async function () {
+  it("processes token to exchange transfer input", async function () {
     const [a0, a1, a2] = await ethers.getSigners();
-    const { HAY_token, HAY_exchange } = this;
+
+    const { HAY_token, HAY_exchange, DEN_token, DEN_exchange } = this;
+
     const ETH_PURCHASED = swapInput(HAY_SOLD, HAY_RESERVE, ETH_RESERVE);
+    const DEN_PURCHASED = swapInput(ETH_PURCHASED, ETH_RESERVE, DEN_RESERVE);
+
     // Transfer HAY to BUYER
     await HAY_token.transfer(a1.address, HAY_SOLD);
     await HAY_token.connect(a1).approve(HAY_exchange.address, HAY_SOLD);
-
     expect(await HAY_token.balanceOf(a1.address)).to.be.eq(HAY_SOLD);
-    // recipient == ZERO_ADDR
-    await expect(HAY_exchange.connect(a1).tokenToEthTransferInput(HAY_SOLD, 1, DEADLINE, ZERO_ADDR)).to.be.reverted;
-    // recipient == exchange
-    await expect(HAY_exchange.connect(a1).tokenToEthTransferInput(HAY_SOLD, 1, DEADLINE, HAY_exchange.address)).to.be
-      .reverted;
 
     const INITIAL_ETH = await ethers.provider.getBalance(a1.address);
     const INITIAL_ETH_2 = await ethers.provider.getBalance(a2.address);
 
     // BUYER converts ETH to UNI
-    const tx = await HAY_exchange.connect(a1).tokenToEthTransferInput(HAY_SOLD, 1, DEADLINE, a2.address);
+    const tx = await HAY_exchange.connect(a1).tokenToExchangeTransferInput(
+      HAY_SOLD,
+      MIN_DEN_BOUGHT,
+      MIN_ETH_BOUGHT,
+      DEADLINE,
+      a2.address,
+      DEN_exchange.address
+    );
     // gas used
     const { cumulativeGasUsed, effectiveGasPrice } = await tx.wait();
 
     // Updated balances of UNI exchange
     expect(await ethers.provider.getBalance(HAY_exchange.address)).to.be.eq(ETH_RESERVE.sub(ETH_PURCHASED));
     expect(await HAY_token.balanceOf(HAY_exchange.address)).to.be.eq(HAY_RESERVE.add(HAY_SOLD));
+
+    // Updated balances of SWAP exchange
+    expect(await ethers.provider.getBalance(DEN_exchange.address)).to.be.eq(ETH_RESERVE.add(ETH_PURCHASED));
+    expect(await DEN_token.balanceOf(DEN_exchange.address)).to.be.eq(DEN_RESERVE.sub(DEN_PURCHASED));
+
     // Updated balances of BUYER
     expect(await HAY_token.balanceOf(a1.address)).to.be.eq(0);
+    expect(await DEN_token.balanceOf(a1.address)).to.be.eq(0);
     expect(await ethers.provider.getBalance(a1.address)).to.be.eq(
       INITIAL_ETH.sub(cumulativeGasUsed.mul(effectiveGasPrice))
     );
+
     // Updated balances of RECIPIENT
     expect(await HAY_token.balanceOf(a2.address)).to.be.eq(0);
-    expect(await ethers.provider.getBalance(a2.address)).to.be.eq(INITIAL_ETH_2.add(ETH_PURCHASED));
+    expect(await DEN_token.balanceOf(a2.address)).to.be.eq(DEN_PURCHASED);
+    expect(await ethers.provider.getBalance(a2.address)).to.be.eq(INITIAL_ETH_2);
   });
 
-  it("processes token to ETH swap output", async function () {
+  it("processes token to exchange swap output", async function () {
     const [a0, a1, a2] = await ethers.getSigners();
-    const { HAY_token, HAY_exchange } = this;
-    const HAY_COST = swapOutput(ETH_BOUGHT, HAY_RESERVE, ETH_RESERVE);
+
+    const { HAY_token, HAY_exchange, DEN_token, DEN_exchange } = this;
+
+    // how much ETH should i pay to get DEN_BOUGHT
+    const ETH_COST = swapOutput(DEN_BOUGHT, ETH_RESERVE, DEN_RESERVE);
+    // how much HAY should i pay to get ETH_COST
+    const HAY_COST = swapOutput(ETH_COST, HAY_RESERVE, ETH_RESERVE);
 
     // Transfer HAY to BUYER
     await HAY_token.transfer(a1.address, MAX_HAY_SOLD);
     await HAY_token.connect(a1).approve(HAY_exchange.address, MAX_HAY_SOLD);
-
     expect(await HAY_token.balanceOf(a1.address)).to.be.eq(MAX_HAY_SOLD);
-    // tokens bought == 0
-    await expect(HAY_exchange.connect(a1).tokenToEthSwapOutput(0, MAX_HAY_SOLD, DEADLINE)).to.be.reverted;
-    // max tokens < token cost
-    await expect(HAY_exchange.connect(a1).tokenToEthSwapOutput(ETH_BOUGHT, HAY_COST - 1, DEADLINE)).to.be.reverted;
-    // deadline < block.timestamp
-    await expect(HAY_exchange.connect(a1).tokenToEthSwapOutput(ETH_BOUGHT, MAX_HAY_SOLD, 1)).to.be.reverted;
 
     const INITIAL_ETH = await ethers.provider.getBalance(a1.address);
 
     // BUYER converts ETH to UNI
-    const tx = await HAY_exchange.connect(a1).tokenToEthSwapOutput(ETH_BOUGHT, MAX_HAY_SOLD, DEADLINE);
+    const tx = await HAY_exchange.connect(a1).tokenToExchangeSwapOutput(
+      DEN_BOUGHT,
+      MAX_HAY_SOLD,
+      MAX_ETH_SOLD,
+      DEADLINE,
+      DEN_exchange.address
+    );
+
     // gas used
     const { cumulativeGasUsed, effectiveGasPrice } = await tx.wait();
+
     // Updated balances of UNI exchange
-    expect(await ethers.provider.getBalance(HAY_exchange.address)).to.be.eq(ETH_RESERVE.sub(ETH_BOUGHT));
+    expect(await ethers.provider.getBalance(HAY_exchange.address)).to.be.eq(ETH_RESERVE.sub(ETH_COST));
     expect(await HAY_token.balanceOf(HAY_exchange.address)).to.be.eq(HAY_RESERVE.add(HAY_COST));
+
+    // Updated balances of SWAP exchange
+    expect(await ethers.provider.getBalance(DEN_exchange.address)).to.be.eq(ETH_RESERVE.add(ETH_COST));
+    expect(await DEN_token.balanceOf(DEN_exchange.address)).to.be.eq(DEN_RESERVE.sub(DEN_BOUGHT));
+
     // Updated balances of BUYER
-    expect(await ethers.provider.getBalance(a1.address)).to.be.eq(
-      INITIAL_ETH.add(ETH_BOUGHT).sub(cumulativeGasUsed.mul(effectiveGasPrice))
-    );
     expect(await HAY_token.balanceOf(a1.address)).to.be.eq(MAX_HAY_SOLD.sub(HAY_COST));
+    expect(await DEN_token.balanceOf(a1.address)).to.be.eq(DEN_BOUGHT);
+    expect(await ethers.provider.getBalance(a1.address)).to.be.eq(
+      INITIAL_ETH.sub(cumulativeGasUsed.mul(effectiveGasPrice))
+    );
   });
 
-  it("processes token to ETH transfer output", async function () {
+  it("processes token to exchange transfer output", async function () {
     const [a0, a1, a2] = await ethers.getSigners();
-    const { HAY_token, HAY_exchange } = this;
-    const HAY_COST = swapOutput(ETH_BOUGHT, HAY_RESERVE, ETH_RESERVE);
 
-    //  Transfer HAY to BUYER
+    const { HAY_token, HAY_exchange, DEN_token, DEN_exchange } = this;
+
+    // how much ETH should i pay to get DEN_BOUGHT
+    const ETH_COST = swapOutput(DEN_BOUGHT, ETH_RESERVE, DEN_RESERVE);
+    // how much HAY should i pay to get ETH_COST
+    const HAY_COST = swapOutput(ETH_COST, HAY_RESERVE, ETH_RESERVE);
+
+    // Transfer HAY to BUYER
     await HAY_token.transfer(a1.address, MAX_HAY_SOLD);
     await HAY_token.connect(a1).approve(HAY_exchange.address, MAX_HAY_SOLD);
-
     expect(await HAY_token.balanceOf(a1.address)).to.be.eq(MAX_HAY_SOLD);
-    //  recipient == ZERO_ADDR
-    await expect(HAY_exchange.connect(a1).tokenToEthTransferOutput(ETH_BOUGHT, MAX_HAY_SOLD, DEADLINE, ZERO_ADDR)).to.be
-      .reverted;
-    //  recipient == exchange
-    await expect(HAY_exchange.tokenToEthTransferOutput(ETH_BOUGHT, MAX_HAY_SOLD, DEADLINE, HAY_exchange.address)).to.be
-      .reverted;
 
     const INITIAL_ETH = await ethers.provider.getBalance(a1.address);
     const INITIAL_ETH_2 = await ethers.provider.getBalance(a2.address);
 
-    //  BUYER converts ETH to UNI
-    const tx = await HAY_exchange.connect(a1).tokenToEthTransferOutput(ETH_BOUGHT, MAX_HAY_SOLD, DEADLINE, a2.address);
+    // BUYER converts ETH to UNI
+    const tx = await HAY_exchange.connect(a1).tokenToExchangeTransferOutput(
+      DEN_BOUGHT,
+      MAX_HAY_SOLD,
+      MAX_ETH_SOLD,
+      DEADLINE,
+      a2.address,
+      DEN_exchange.address
+    );
+
     // gas used
     const { cumulativeGasUsed, effectiveGasPrice } = await tx.wait();
 
-    //  Updated balances of UNI exchange
-    expect(await ethers.provider.getBalance(HAY_exchange.address)).to.be.eq(ETH_RESERVE.sub(ETH_BOUGHT));
+    // Updated balances of UNI exchange
+    expect(await ethers.provider.getBalance(HAY_exchange.address)).to.be.eq(ETH_RESERVE.sub(ETH_COST));
     expect(await HAY_token.balanceOf(HAY_exchange.address)).to.be.eq(HAY_RESERVE.add(HAY_COST));
-    //  Updated balances of BUYER
+
+    // Updated balances of SWAP exchange
+    expect(await ethers.provider.getBalance(DEN_exchange.address)).to.be.eq(ETH_RESERVE.add(ETH_COST));
+    expect(await DEN_token.balanceOf(DEN_exchange.address)).to.be.eq(DEN_RESERVE.sub(DEN_BOUGHT));
+
+    // Updated balances of BUYER
+    expect(await HAY_token.balanceOf(a1.address)).to.be.eq(MAX_HAY_SOLD.sub(HAY_COST));
+    expect(await DEN_token.balanceOf(a1.address)).to.be.eq(0);
     expect(await ethers.provider.getBalance(a1.address)).to.be.eq(
       INITIAL_ETH.sub(cumulativeGasUsed.mul(effectiveGasPrice))
     );
-    expect(await HAY_token.balanceOf(a1.address)).to.be.eq(MAX_HAY_SOLD.sub(HAY_COST));
-    //  Updated balances of RECIPIENT
-    expect(await ethers.provider.getBalance(a2.address)).to.be.eq(INITIAL_ETH_2.add(ETH_BOUGHT));
+
+    // Updated balances of RECIPIENT
     expect(await HAY_token.balanceOf(a2.address)).to.be.eq(0);
+    expect(await DEN_token.balanceOf(a2.address)).to.be.eq(DEN_BOUGHT);
+    expect(await ethers.provider.getBalance(a2.address)).to.be.eq(INITIAL_ETH_2);
   });
 });
