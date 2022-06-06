@@ -11,15 +11,10 @@ const {
   ETH_BOUGHT,
   MAX_HAY_SOLD,
   DEADLINE,
-  ZERO_ADDR,
 } = require("./constants");
 
 describe("UniswapExchangeV1: Token to ETH trades", function () {
   beforeEach(async function () {
-    const signer = await ethers.Wallet.createRandom({
-      balance: ethers.utils.parseEther("100"),
-    });
-
     const tokenFactory = await ethers.getContractFactory("ERC20Test");
 
     this.HAY_token = await tokenFactory.deploy("Hay token", "HAY", ethers.constants.MaxUint256);
@@ -154,7 +149,7 @@ describe("UniswapExchangeV1: Token to ETH trades", function () {
     expect(await HAY_token.balanceOf(a1.address)).to.be.eq(MAX_HAY_SOLD.sub(HAY_COST));
   });
 
-  it.only("processes token to ETH transfer output", async function () {
+  it("processes token to ETH transfer output", async function () {
     const [a0, a1, a2] = await ethers.getSigners();
     const { HAY_token, HAY_exchange } = this;
     const HAY_COST = swapOutput(ETH_BOUGHT, HAY_RESERVE, ETH_RESERVE);

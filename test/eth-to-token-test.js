@@ -16,10 +16,6 @@ const {
 
 describe("UniswapExchangeV1: ETH to token trades", function () {
   beforeEach(async function () {
-    const signer = await ethers.Wallet.createRandom({
-      balance: ethers.utils.parseEther("100"),
-    });
-
     const tokenFactory = await ethers.getContractFactory("ERC20Test");
 
     this.HAY_token = await tokenFactory.deploy("Hay token", "HAY", ethers.constants.MaxUint256);
